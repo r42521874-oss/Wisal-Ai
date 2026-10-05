@@ -74,7 +74,7 @@ app.post("/api/analyze",async(req,res)=>{
  const fetched=(await Promise.all(candidates.map(fetchSourceContext))).filter(Boolean);
  const allowed=fetched;
  const prompt=`أنت وِصال AI. مهمتك تحسين أسلوب إيصال المحتوى الإسلامي فقط مع الحفاظ على المعنى، ولا تصدر فتوى.
-الجمهور: ${audience}
+الجمهور: ${audience}${audienceDetails?` — تفاصيل إضافية: ${audienceDetails}`:""}
 الهدف: ${goal}
 النص:
 ${text}
