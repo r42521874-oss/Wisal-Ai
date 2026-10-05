@@ -36,6 +36,24 @@ function retrieve(text){
  return SOURCES.map(s=>({s,score:(keywords[s.id]||[]).reduce((n,k)=>n+(t.includes(k.toLowerCase())?1:0),0)}))
  .filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,5).map(x=>x.s);
 }
+async function fetchSourceContext(source){
+ try{
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),6000);
+  const r=await fetch(source.url,{headers:{"User-Agent":"WisalAI/1.0","Accept":"text/html,application/json,text/plain"},signal:controller.signal});
+  clearTimeout(timeout);
+  if(!r.ok) return null;
+  const type=r.headers.get("content-type")||"";
+  let raw=await r.text();
+  if(!raw.trim()) return null;
+  if(type.includes("html")){
+   raw=raw.replace(/<script[\\s\\S]*?<\\/script>/gi," ").replace(/<style[\\s\\S]*?<\\/style>/gi," ").replace(/<[^>]+>/g," ");
+  }
+  const excerpt=raw.replace(/&nbsp;|&#160;/g," ").replace(/&amp;/g,"&").replace(/\\s+/g," ").trim().slice(0,5000);
+  if(excerpt.length<40) return null;
+  return {...source,excerpt};
+ }catch{return null}
+}
 function safeJson(text){try{return JSON.parse(text.replace(/^```json\s*|```$/g,"").trim())}catch{return null}}
 app.get("/api/sources",(req,res)=>res.json({sources:SOURCES}));
 app.post("/api/analyze",async(req,res)=>{
@@ -68,7 +86,7 @@ source_ids يجب أن تكون فقط من المصادر المسترجعة ا
   if(!result) return res.status(502).json({error:"تعذر قراءة نتيجة التحليل."});
   const used=(result.source_ids||[]).map(id=>SOURCES.find(s=>s.id===id)).filter(Boolean);
   res.json({...result,sources:used});
- }catch(e){res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل."})}
+ }catch(e){console.error("Analyze error:",e);res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",details:e?.message||"Unknown server error"})}
 });
 app.get("/api/health",(req,res)=>res.json({ok:true,geminiConfigured:Boolean(process.env.GEMINI_API_KEY),sources:SOURCES.length}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
