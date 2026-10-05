@@ -47,7 +47,10 @@ async function fetchSourceContext(source){
   let raw=await r.text();
   if(!raw.trim()) return null;
   if(type.includes("html")){
-   raw=raw.replace(/<script[\\s\\S]*?<\\/script>/gi," ").replace(/<style[\\s\\S]*?<\\/style>/gi," ").replace(/<[^>]+>/g," ");
+   raw=raw
+    .replace(new RegExp("<script[\\\\s\\\\S]*?</script>","gi")," ")
+    .replace(new RegExp("<style[\\\\s\\\\S]*?</style>","gi")," ")
+    .replace(new RegExp("<[^>]+>","g")," ");
   }
   const excerpt=raw.replace(/&nbsp;|&#160;/g," ").replace(/&amp;/g,"&").replace(/\\s+/g," ").trim().slice(0,5000);
   if(excerpt.length<40) return null;
