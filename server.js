@@ -69,5 +69,5 @@ source_ids يجب أن تكون فقط من: ${allowed.map(s=>s.id).join(", ")}.
  }catch(e){res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل."})}
 });
 app.get("/api/health",(req,res)=>res.json({ok:true,geminiConfigured:Boolean(process.env.GEMINI_API_KEY),sources:SOURCES.length}));
-app.get("*",(req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 app.listen(process.env.PORT||3000,()=>console.log("Wisal AI running"));
