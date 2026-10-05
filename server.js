@@ -42,8 +42,9 @@ app.post("/api/analyze",async(req,res)=>{
  const {text,audience="جمهور عام",goal="تحليل الأسلوب واقتراح تحسين"}=req.body||{};
  if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا."});
  if(!process.env.GEMINI_API_KEY) return res.status(503).json({error:"Gemini غير مفعّل بعد. أضيفي GEMINI_API_KEY في Render."});
- const sources=retrieve(text);
- const allowed=sources.length?sources:SOURCES.slice(0,5);
+ const candidates=retrieve(text).slice(0,3);
+ const fetched=(await Promise.all(candidates.map(fetchSourceContext))).filter(Boolean);
+ const allowed=fetched;
  const prompt=`أنت وِصال AI. مهمتك تحسين أسلوب إيصال المحتوى الإسلامي فقط مع الحفاظ على المعنى، ولا تصدر فتوى.
 الجمهور: ${audience}
 الهدف: ${goal}
@@ -55,7 +56,7 @@ ${allowed.map(s=>"- "+s.name+" | "+s.url).join("\n")}
 
 أعد JSON صالحًا فقط بالشكل:
 {"impression":"...","strengths":["..."],"improvements":["..."],"rewrite":"...","meaning_preserved":true,"safety_note":"...","source_ids":["id"]}
-source_ids يجب أن تكون فقط من: ${allowed.map(s=>s.id).join(", ")}.
+source_ids يجب أن تكون فقط من المصادر المسترجعة التالية: ${allowed.map(s=>s.id).join(", ")||"لا يوجد"}.
 إذا لم تحتج إلى مصدر أو لم تستطع التحقق، اجعل source_ids فارغة واذكر ذلك في safety_note.`;
  try{
   const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
