@@ -85,4 +85,5 @@ document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g
  else if(k==='copy'){navigator.clipboard&&navigator.clipboard.writeText((ai?.rewrite||NEWT.replace(/<[^>]+>/g,''))).catch(()=>{});a.textContent='✓ تم النسخ'}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-act],[data-go]:not(button)')){e.preventDefault();e.target.click()}});
 render();
-loadSources();async function loadSources(){try{const r=await fetch(API+'/api/sources');if(r.ok){const d=await r.json();approvedSources=Array.isArray(d.sources)?d.sources:[];if(cur==='src')render()}}catch{}}\n</script></body></html>
+loadSources();async function loadSources(){try{const r=await fetch(API+'/api/sources');if(r.ok){const d=await r.json();approvedSources=Array.isArray(d.sources)?d.sources:[];if(cur==='src')render()}}catch{}}
+</script></body></html>
