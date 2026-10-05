@@ -18,8 +18,8 @@ app.use((req,res,next)=>{
 app.use(express.static(__dirname));
 
 const SOURCES=[
- {id:"quranenc",name:"موسوعة القرآن الكريم",url:"https://quranenc.com/ar/home",api:"https://quranenc.com/ar/home/api/",tags:["قرآن","ترجمة"]},
- {id:"hadeethenc",name:"موسوعة الأحاديث النبوية",url:"https://hadeethenc.com/",api:"https://hadeethenc.com/api-docs",tags:["حديث","سنة"]},
+ {id:"quranenc",name:"موسوعة القرآن الكريم",url:"https://quranenc.com/en/home/api",api:"https://quranenc.com/en/home/api",tags:["قرآن","ترجمة"]},
+ {id:"hadeethenc",name:"موسوعة الأحاديث النبوية",url:"https://hadeethenc.com/",api:"https://hadeethenc.com/",tags:["حديث","سنة"]},
  {id:"islamenc",name:"موسوعة المحتوى الإسلامي باللغات",url:"https://islamenc.com/ar",tags:["محتوى إسلامي","لغات"]},
  {id:"terminologyenc",name:"موسوعة المصطلحات الإسلامية",url:"https://terminologyenc.com/",tags:["مصطلحات"]},
  {id:"byenah",name:"بيان الإسلام",url:"https://byenah.com/ar/api",tags:["تعريف بالإسلام","لغات"]},
