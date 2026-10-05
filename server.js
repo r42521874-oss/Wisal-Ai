@@ -57,7 +57,7 @@ async function fetchSourceContext(source){
   let raw=await r.text();
   if(!raw.trim()) return null;
   if(type.includes("html")) raw=stripHtml(raw);
-  const excerpt=raw.replace(/\s+/g," ").trim().slice(0,5000);|&#160;/g," ").replace(/&amp;/g,"&").replace(/\\s+/g," ").trim().slice(0,5000);
+  const excerpt=raw.replace(/\s+/g," ").trim().slice(0,5000);
   if(excerpt.length<40) return null;
   return {...source,excerpt};
  }catch{return null}
@@ -66,7 +66,9 @@ function safeJson(text){try{return JSON.parse(text.replace(/^```json\s*|```$/g,"
 app.get("/api/sources",(req,res)=>res.json({sources:SOURCES}));
 app.post("/api/analyze",async(req,res)=>{
  const {text,audience="جمهور عام",audienceDetails="",goal="تحليل الأسلوب واقتراح تحسين"}=req.body||{};
- if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});\n const words=text.trim().split(/\\s+/).filter(Boolean).length;\n if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة). قسّميه إلى أجزاء أقصر.",code:"TEXT_TOO_LONG",maxWords:1500,words});
+ if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});
+ const words=text.trim().split(/\s+/).filter(Boolean).length;
+ if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة). قسّميه إلى أجزاء أقصر.",code:"TEXT_TOO_LONG",maxWords:1500,words});
  if(!process.env.GEMINI_API_KEY) return res.status(503).json({error:"Gemini غير مفعّل بعد. أضيفي GEMINI_API_KEY في Render."});
  const candidates=retrieve(text).slice(0,3);
  const fetched=(await Promise.all(candidates.map(fetchSourceContext))).filter(Boolean);
@@ -92,7 +94,8 @@ source_ids يجب أن تكون فقط من المصادر المسترجعة ا
   const raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||"";
   const result=safeJson(raw);
   if(!result) return res.status(502).json({error:"تعذر قراءة نتيجة التحليل."});
-  const allowedIds=new Set(allowed.map(s=>s.id));\n  const used=(Array.isArray(result.source_ids)?result.source_ids:[]).filter(id=>allowedIds.has(id)).map(id=>allowed.find(s=>s.id===id)).filter(Boolean).map(({excerpt,...s})=>s);
+  const allowedIds=new Set(allowed.map(s=>s.id));
+  const used=(Array.isArray(result.source_ids)?result.source_ids:[]).filter(id=>allowedIds.has(id)).map(id=>allowed.find(s=>s.id===id)).filter(Boolean).map(({excerpt,...s})=>s);
   res.json({...result,sources:used});
  }catch(e){console.error("Analyze error:",e);res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",details:e?.message||"Unknown server error"})}
 });
