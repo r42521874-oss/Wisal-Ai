@@ -85,4 +85,17 @@ document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-act],[data-go]:not(button)')){e.preventDefault();e.target.click()}});
 render();
 loadSources();async function loadSources(){try{const r=await fetch(API+'/api/sources');if(r.ok){const d=await r.json();approvedSources=Array.isArray(d.sources)?d.sources:[];if(cur==='src')render()}}catch{}}
-</script></body></html>
+</script>
+<!-- ElevenLabs Wisal Agent: uses the agent's configured knowledge base/RAG. -->
+<elevenlabs-convai
+  agent-id="agent_2001m47ydj9yfa098yn1savj7m5x"
+  action-text="تحدث مع وِصال"
+  start-call-text="ابدأ المحادثة"
+  end-call-text="إنهاء المحادثة"
+  expand-text="افتح مساعد وِصال"
+  listening-text="أستمع إليك..."
+  speaking-text="وِصال يجيب..."
+  dismissible="true">
+</elevenlabs-convai>
+<script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+</body></html>
