@@ -6,7 +6,7 @@ const app=express();
 app.disable("x-powered-by");
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 app.use(express.json({limit:"1mb"}));
-const ALLOWED_ORIGINS=(process.env.ALLOWED_ORIGINS||"https://wisal-ai.onrender.com,https://wisal-ai-api.onrender.com").split(",").map(x=>x.trim()).filter(Boolean);
+const ALLOWED_ORIGINS=(process.env.ALLOWED_ORIGINS||"https://wisal-ai.onrender.com,https://wisal-ai-v8n2.onrender.com,https://wisal-ai-api.onrender.com").split(",").map(x=>x.trim()).filter(Boolean);
 app.use((req,res,next)=>{
  const origin=req.headers.origin;
  if(origin&&ALLOWED_ORIGINS.includes(origin)) res.setHeader("Access-Control-Allow-Origin",origin);
