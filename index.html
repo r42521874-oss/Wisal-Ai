@@ -74,7 +74,37 @@ function render(){if(timer){clearInterval(timer);timer=null}$('#app').innerHTML=
  const ta=$('#ta');if(ta)ta.oninput=()=>{txt=ta.value;const n=wordCount(txt);$('#wc').textContent=n+' / 1500 كلمة';$('#wc').style.color=n>1500?'var(--er)':'var(--i3)'}; const cta=$('#custTa');if(cta)cta.oninput=()=>{custText=cta.value};
  if(cur==='proc'){if(ps<1)ps=1;timer=setInterval(()=>{if(ps<5){ps++;render()}},900);if(!analyzing)analyze()}}
 const $=s=>document.querySelector(s); const wordCount=s=>(s||'').trim()?((s||'').trim().match(/\S+/g)||[]).length:0; const esc=s=>String(s??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));
-async function analyze(){if(analyzing)return;analyzing=true;ai=null;aiErr='';try{const audience=['جمهور عام','جمهور عقلاني','جمهور روحي'][aud]||'جمهور عام';const goals=['تحليل الأسلوب فقط','اقتراح تحسين','تحليل الأسلوب واقتراح تحسين'];const r=await fetch(API+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt,audience,audienceDetails:cust?custText.trim():'',goal:goals[goal]})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||d.details||('تعذر التحليل (HTTP '+r.status+')'));ai=d;ps=6;cur='ana';render();scrollTo(0,0)}catch(e){aiErr=e.message||'حدث خطأ مؤقت';cur='st';render();scrollTo(0,0)}finally{analyzing=false}}
+async function analyze(){if(analyzing)return;analyzing=true;ai=null;aiErr='';let conversation=null;try{
+ const audience=['جمهور عام','جمهور عقلاني','جمهور روحي'][aud]||'جمهور عام';
+ const goals=['تحليل الأسلوب فقط','اقتراح تحسين','تحليل الأسلوب واقتراح تحسين'];
+ const {Conversation}=await import('https://esm.sh/@elevenlabs/client@1');
+ const request='أنت محرك التحليل في موقع وِصال. حلّل النص التالي باستخدام قاعدة المعرفة/RAG المربوطة بك. الجمهور: '+audience+(cust&&custText.trim()?' — تفاصيل إضافية: '+custText.trim():'')+'. الهدف: '+goals[goal]+'. أعد JSON صالحًا فقط بلا markdown بالشكل: {"impression":"...","strengths":["..."],"improvements":["..."],"rewrite":"...","meaning_preserved":true,"safety_note":"...","source_ids":[]} . لا تخترع مصادر. النص: '+txt;
+ const answer=await new Promise(async(resolve,reject)=>{
+  let settled=false;
+  const timer=setTimeout(()=>{if(!settled){settled=true;reject(new Error('انتهت مهلة استجابة وكيل وِصال.'))}},60000);
+  try{
+   conversation=await Conversation.startSession({
+    agentId:'agent_2001m47ydj9yfa098yn1savj7m5x',
+    connectionType:'websocket',
+    overrides:{conversation:{textOnly:true},agent:{firstMessage:''}},
+    onMessage:(m)=>{
+     if(settled||m?.source==='user'||!m?.message)return;
+     const raw=String(m.message).trim();
+     const cleaned=raw.replace(/^\`\`\`json\\s*/i,'').replace(/\`\`\`$/,'').trim();
+     try{const parsed=JSON.parse(cleaned);settled=true;clearTimeout(timer);resolve(parsed)}catch{}
+    },
+    onError:(e)=>{if(!settled){settled=true;clearTimeout(timer);reject(new Error(e?.message||'تعذر الاتصال بوكيل وِصال.'))}}
+   });
+   conversation.sendUserMessage(request);
+  }catch(e){if(!settled){settled=true;clearTimeout(timer);reject(e)}}
+ });
+ ai=answer;
+ if(!Array.isArray(ai.strengths))ai.strengths=[];
+ if(!Array.isArray(ai.improvements))ai.improvements=[];
+ if(!Array.isArray(ai.sources))ai.sources=[];
+ ps=6;cur='ana';render();scrollTo(0,0);
+ }catch(e){aiErr=e.message||'حدث خطأ أثناء تحليل النص بواسطة وكيل وِصال';cur='st';render();scrollTo(0,0)}
+ finally{try{if(conversation)await conversation.endSession()}catch{} analyzing=false}}
 function go(k){if(k==='proc'){ps=0;if(analyzing)return}cur=k;render();scrollTo(0,0)}
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g)return go(g.dataset.go);const a=e.target.closest('[data-act]');if(!a)return;const k=a.dataset.act;
  if(k.startsWith('aud')){aud=+k[3];render()}else if(k.startsWith('goal')){goal=+k[4];render()}
