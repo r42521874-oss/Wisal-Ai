@@ -65,16 +65,18 @@ async function fetchSourceContext(source){
 }
 function safeJson(text){try{return JSON.parse(String(text||"").replace(/^\`\`\`json\s*|\`\`\`$/g,"").trim())}catch{return null}}
 function geminiConfig(){
- const key=(process.env.GEMINI_API_KEY||"").trim();
- return {configured:key.length>0,keyLength:key.length,model:(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim()};
+ const raw=process.env.GEMINI_API_KEY;
+ const key=typeof raw==="string"?raw.trim():"";
+ const model=(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim();
+ return {configured:key.length>0,key,keyLength:key.length,model,envPresent:typeof raw==="string",envNonEmpty:key.length>0};
 }
 async function callGemini(prompt){
- const {configured,model}=geminiConfig();
+ const {configured,model,key}=geminiConfig();
  if(!configured){const e=new Error("GEMINI_API_KEY is missing at runtime");e.code="GEMINI_NOT_CONFIGURED";throw e}
  const controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),45000);
  try{
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY.trim())}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.25}}),signal:controller.signal});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.25}}),signal:controller.signal});
   const raw=await r.text(); let data={}; try{data=JSON.parse(raw)}catch{}
   if(!r.ok){const e=new Error(data?.error?.message||`Gemini HTTP ${r.status}`);e.code="GEMINI_UPSTREAM_ERROR";e.status=r.status;throw e}
   return data;
@@ -119,6 +121,6 @@ source_ids يجب أن تكون فقط من المصادر المسترجعة ا
   res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",code:"ANALYZE_ERROR"});
  }
 });
-app.get("/api/health",(req,res)=>{const g=geminiConfig();res.json({ok:true,gemini:{configured:g.configured,model:g.model},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
+app.get("/api/health",(req,res)=>{const g=geminiConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},gemini:{configured:g.configured,envPresent:g.envPresent,envNonEmpty:g.envNonEmpty,keyLength:g.keyLength,model:g.model},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
 app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
-app.listen(process.env.PORT||3000,()=>console.log("Wisal AI running"));
+app.listen(process.env.PORT||3000,()=>{const g=geminiConfig();console.log("Wisal AI running",{service:"wisal-ai-api",geminiConfigured:g.configured,geminiEnvPresent:g.envPresent,geminiKeyLength:g.keyLength,geminiModel:g.model,sources:SOURCES.length})});
