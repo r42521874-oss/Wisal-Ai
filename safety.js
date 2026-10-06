@@ -52,7 +52,7 @@ export function outputChecks(text,result,passages){
  for(const v of (out?text:'').match(/[0-9٠-٩]+/g)||[])if(!out.includes(v))issues.push('NUMBER_CHANGED');
  if(/قال الله|قال رسول|قال النبي|حلال|حرام|واجب|فرض/.test(n)&&!(/قال الله|قال رسول|قال النبي|حلال|حرام|واجب|فرض/.test(input)))issues.push('NEW_RELIGIOUS_CLAIM');
  if(out&&/يجب|واجب|فرض|يتعين|يلزم/.test(input)&&!(/يجب|واجب|فرض|يتعين|يلزم|عليه ان/.test(n)))issues.push('OBLIGATION_CHANGED');
- if(out&&isAntiIslamPromotion(out))issues.push('NON_ISLAMIC_PROMOTION');
+ if(out&&isAntiIslamPromotion(out)){issues.push('NON_ISLAMIC_PROMOTION');issues.push('NEW_RELIGIOUS_CLAIM');}
  const allowed=new Set(passages.map(p=>p.id));
  if(result.source_ids.some(id=>!allowed.has(id)))issues.push('UNSUPPORTED_SOURCE');
  return [...new Set(issues)];
