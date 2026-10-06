@@ -64,61 +64,69 @@ async function fetchSourceContext(source){
  }catch(e){console.warn("Source unavailable:",source.id,e?.name||e?.message||"unknown");return null}
 }
 function safeJson(text){try{return JSON.parse(String(text||"").replace(/^\`\`\`json\s*|\`\`\`$/g,"").trim())}catch{return null}}
-function geminiConfig(){
- const raw=process.env.GEMINI_API_KEY;
+function elevenConfig(){
+ const raw=process.env.ELEVENLABS_API_KEY;
  const key=typeof raw==="string"?raw.trim():"";
- const model=(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim();
- return {configured:key.length>0,key,keyLength:key.length,model,envPresent:typeof raw==="string",envNonEmpty:key.length>0};
+ return {configured:key.length>0,key,envPresent:typeof raw==="string",keyLength:key.length};
 }
-async function callGemini(prompt){
- const {configured,model,key}=geminiConfig();
- if(!configured){const e=new Error("GEMINI_API_KEY is missing at runtime");e.code="GEMINI_NOT_CONFIGURED";throw e}
- const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),45000);
- try{
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.25}}),signal:controller.signal});
-  const raw=await r.text(); let data={}; try{data=JSON.parse(raw)}catch{}
-  if(!r.ok){const e=new Error(data?.error?.message||`Gemini HTTP ${r.status}`);e.code="GEMINI_UPSTREAM_ERROR";e.status=r.status;throw e}
-  return data;
- }finally{clearTimeout(timeout)}
+const ELEVEN_AGENT_ID="agent_2001m47ydj9yfa098yn1savj7m5x";
+async function getElevenSignedUrl(){
+ const e=elevenConfig();
+ if(!e.configured){const x=new Error("ELEVENLABS_API_KEY is missing at runtime");x.code="ELEVEN_NOT_CONFIGURED";throw x}
+ const r=await fetch("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="+encodeURIComponent(ELEVEN_AGENT_ID),{headers:{"xi-api-key":e.key}});
+ const raw=await r.text();let d={};try{d=JSON.parse(raw)}catch{}
+ if(!r.ok||!d.signed_url){const x=new Error(d?.detail?.message||d?.detail||("ElevenLabs HTTP "+r.status));x.code="ELEVEN_AUTH_ERROR";x.status=r.status;throw x}
+ return d.signed_url;
+}
+async function callElevenAgent(message){
+ const signed=await getElevenSignedUrl();
+ return await new Promise((resolve,reject)=>{
+  const ws=new WebSocket(signed);
+  let done=false;
+  const finish=(err,val)=>{if(done)return;done=true;clearTimeout(timer);try{ws.close()}catch{};err?reject(err):resolve(val)};
+  const timer=setTimeout(()=>finish(Object.assign(new Error("ElevenLabs timeout"),{code:"ELEVEN_TIMEOUT"})),60000);
+  ws.addEventListener("open",()=>{
+   ws.send(JSON.stringify({type:"conversation_initiation_client_data",conversation_config_override:{conversation:{text_only:true}}}));
+   ws.send(JSON.stringify({type:"user_message",text:message}));
+  });
+  ws.addEventListener("message",(ev)=>{
+   let d;try{d=JSON.parse(String(ev.data))}catch{return}
+   if(d.type==="ping"&&d.ping_event) ws.send(JSON.stringify({type:"pong",event_id:d.ping_event.event_id}));
+   if(d.type==="agent_response"){
+    const answer=d.agent_response_event?.agent_response;
+    if(answer) finish(null,answer);
+   }
+   if(d.type==="client_error") finish(Object.assign(new Error(d.client_error_event?.message||"ElevenLabs client error"),{code:"ELEVEN_UPSTREAM_ERROR"}));
+  });
+  ws.addEventListener("error",()=>finish(Object.assign(new Error("ElevenLabs WebSocket error"),{code:"ELEVEN_UPSTREAM_ERROR"})));
+ });
 }
 app.get("/api/sources",(req,res)=>res.json({sources:SOURCES}));
 app.post("/api/analyze",async(req,res)=>{
  const {text,audience="جمهور عام",audienceDetails="",goal="تحليل الأسلوب واقتراح تحسين"}=req.body||{};
  if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});
  const words=text.trim().split(/\s+/).filter(Boolean).length;
- if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة). قسّميه إلى أجزاء أقصر.",code:"TEXT_TOO_LONG",maxWords:1500,words});
- if(!geminiConfig().configured) return res.status(503).json({error:"Gemini غير مفعّل في خدمة API وقت التشغيل.",code:"GEMINI_NOT_CONFIGURED"});
- const candidates=retrieve(text).slice(0,3);
- const fetched=(await Promise.all(candidates.map(fetchSourceContext))).filter(Boolean);
- const allowed=fetched;
- const prompt=`أنت وِصال AI. مهمتك تحسين أسلوب إيصال المحتوى الإسلامي فقط مع الحفاظ على المعنى، ولا تصدر فتوى.
-الجمهور: ${audience}${audienceDetails?` — تفاصيل إضافية: ${audienceDetails}`:""}
-الهدف: ${goal}
-النص:
+ if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة).",code:"TEXT_TOO_LONG"});
+ if(!elevenConfig().configured) return res.status(503).json({error:"مفتاح ElevenLabs غير مفعّل في خدمة API.",code:"ELEVEN_NOT_CONFIGURED"});
+ const prompt=`حلّل النص التالي وفق قاعدة المعرفة/RAG المرتبطة بك. هذا طلب من واجهة وِصال.
+الجمهور المختار: ${audience}${audienceDetails?` — تفاصيل الجمهور: ${audienceDetails}`:""}
+الهدف المختار: ${goal}
+النص الذي كتبه المستخدم:
 ${text}
 
-المصادر الوحيدة المسموح لك بالإشارة إليها هي القائمة التالية، ولا يجوز اختلاق مصدر أو رابط أو نسبة معلومة لمصدر لم تتحقق منه:
-${allowed.map(s=>"- ID: "+s.id+" | "+s.name+" | "+s.url+"\nمقتطف متحقق من المصدر:\n"+s.excerpt).join("\n\n")}
-
-أعد JSON صالحًا فقط بالشكل:
-{"impression":"...","strengths":["..."],"improvements":["..."],"rewrite":"...","meaning_preserved":true,"safety_note":"...","source_ids":["id"]}
-source_ids يجب أن تكون فقط من المصادر المسترجعة التالية: ${allowed.map(s=>s.id).join(", ")||"لا يوجد"}.
-إذا لم تحتج إلى مصدر أو لم تستطع التحقق، اجعل source_ids فارغة واذكر ذلك في safety_note.`;
+أعد ردك بصيغة JSON فقط بلا Markdown:
+{"impression":"انطباعك وتحليلك","strengths":["نقطة"],"improvements":["نقطة"],"rewrite":"الصياغة المقترحة من قبلك","meaning_preserved":true,"safety_note":"ملاحظة السلامة أو التحقق","source_ids":[]}
+استخدم معرفتك وRAG المربوطين بك، ولا تخترع مصادر.`;
  try{
-  const data=await callGemini(prompt);
-  const raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||"";
+  const raw=await callElevenAgent(prompt);
   const result=safeJson(raw);
-  if(!result) return res.status(502).json({error:"تعذر قراءة نتيجة التحليل."});
-  const allowedIds=new Set(allowed.map(s=>s.id));
-  const used=(Array.isArray(result.source_ids)?result.source_ids:[]).filter(id=>allowedIds.has(id)).map(id=>allowed.find(s=>s.id===id)).filter(Boolean).map(({excerpt,...s})=>s);
-  res.json({...result,sources:used});
+  if(!result) return res.status(502).json({error:"وصل رد من وكيل وِصال لكن تعذر قراءته كتحليل منظم.",code:"ELEVEN_BAD_RESPONSE",details:raw.slice(0,500)});
+  res.json({...result,sources:[]});
  }catch(e){
-  console.error("Analyze error:",{code:e?.code||"ANALYZE_ERROR",status:e?.status||null,message:e?.message||"Unknown"});
-  if(e?.code==="GEMINI_NOT_CONFIGURED") return res.status(503).json({error:"Gemini غير مفعّل في خدمة API وقت التشغيل.",code:e.code});
-  if(e?.name==="AbortError") return res.status(504).json({error:"انتهت مهلة الاتصال بـ Gemini.",code:"GEMINI_TIMEOUT"});
-  if(e?.code==="GEMINI_UPSTREAM_ERROR") return res.status(502).json({error:"رفض Gemini طلب التحليل.",code:e.code,details:e.message});
-  res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",code:"ANALYZE_ERROR"});
+  console.error("Eleven analyze error:",{code:e?.code||"ANALYZE_ERROR",status:e?.status||null,message:e?.message||"Unknown"});
+  if(e?.code==="ELEVEN_TIMEOUT") return res.status(504).json({error:"انتهت مهلة استجابة وكيل وِصال.",code:e.code});
+  if(e?.code==="ELEVEN_NOT_CONFIGURED") return res.status(503).json({error:"مفتاح ElevenLabs غير مفعّل في خدمة API.",code:e.code});
+  res.status(502).json({error:"تعذر الاتصال بوكيل وِصال.",code:e?.code||"ELEVEN_UPSTREAM_ERROR",details:e?.message});
  }
 });
 app.get("/api/health",(req,res)=>{const g=geminiConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},gemini:{configured:g.configured,envPresent:g.envPresent,envNonEmpty:g.envNonEmpty,keyLength:g.keyLength,model:g.model},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
