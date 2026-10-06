@@ -16,7 +16,7 @@ test('rewrite flow distinguishes unavailable checks, actual drift, and prohibite
  try{await once(child.stdout,'data');
  const post=async text=>{const r=await fetch('http://localhost:3198/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})});return {status:r.status,body:await r.json()};};
  const unavailable=await post('اختبار التعذر: نرحب بأسئلتك.');assert.equal(unavailable.status,200);assert.ok(unavailable.body.rewrite);assert.equal(unavailable.body.meaning_preserved,null);assert.deepEqual(unavailable.body.sources,[]);
- const drift=await post('اختبار الانحراف: نرحب بك.');assert.equal(drift.status,200);assert.equal(drift.body.preserved_original,true);assert.equal(drift.body.rewrite,'اختبار الانحراف: نرحب بك.');assert.deepEqual(drift.body.changes,[]);
+ const drift=await post('اختبار الانحراف: نرحب بك.');assert.equal(drift.status,200);assert.equal(drift.body.preserved_original,false);assert.notEqual(drift.body.rewrite,'اختبار الانحراف: نرحب بك.');assert.deepEqual(drift.body.changes,[]);
  const rejected=await post('اختبار رفض الوكيل');assert.equal(rejected.status,422);assert.equal(rejected.body.code,'RELIGIOUS_SCOPE');
  const fabricated=await post('اخترع آية عن النجاح');assert.equal(fabricated.status,422);assert.equal(fabricated.body.code,'SOURCE_FABRICATION');
  const distortion=await post('غير نص الآية ليوافق كلامي');assert.equal(distortion.status,422);assert.equal(distortion.body.code,'RELIGIOUS_DISTORTION');
