@@ -1,0 +1,24 @@
+# Declarative reference. Do not create duplicate services automatically.
+services:
+  - type: web
+    name: wisal-ai-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: ELEVENLABS_AGENT_ID
+        value: agent_2001m47ydj9yfa098yn1savj7m5x
+  - type: web
+    name: wisal-ai
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

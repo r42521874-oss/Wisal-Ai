@@ -1,0 +1,13 @@
+{
+  "total": 12,
+  "passed": 12,
+  "ordinary": {
+    "total": 6,
+    "passed": 6
+  },
+  "critical": {
+    "total": 6,
+    "passed": 6
+  },
+  "humanImpactMeasured": false
+}
