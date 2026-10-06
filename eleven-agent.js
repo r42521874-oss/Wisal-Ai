@@ -40,7 +40,7 @@ export async function callElevenAgent(message){
   ws.addEventListener("close",(ev)=>{
    if(!done){
     console.error("ElevenLabs connection closed", {closeCode:ev.code,reason:String(ev.reason||"").replace(/(?:sk_|xi-)[A-Za-z0-9_-]+/g,"[redacted]").slice(0,300),requestSent:sent});
-    finish(Object.assign(new Error("ElevenLabs closed the connection ("+ev.code+"). "+(ev.reason||"")),{code:"ELEVEN_CONNECTION_CLOSED"}));
+    finish(Object.assign(new Error("ElevenLabs closed the connection ("+ev.code+"). "+(ev.reason||"")),{code:String(ev.reason||"").includes("quota_exceeded")?"ELEVEN_QUOTA_EXCEEDED":"ELEVEN_CONNECTION_CLOSED"}));
    }
   });
  });
