@@ -16,7 +16,8 @@ app.use((req,res,next)=>{
  if(req.method==="OPTIONS") return res.sendStatus(204);
  next();
 });
-app.use(express.static(__dirname));
+app.get("/",(req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+app.get("/index.html",(req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 
 const SOURCES=[
  {id:"quranenc",name:"موسوعة القرآن الكريم",url:"https://quranenc.com/en/home/api",api:"https://quranenc.com/en/home/api",tags:["قرآن","ترجمة"]},
@@ -63,7 +64,9 @@ async function fetchSourceContext(source){
   return {...source,excerpt};
  }catch(e){console.warn("Source unavailable:",source.id,e?.name||e?.message||"unknown");return null}
 }
-function safeJson(text){try{return JSON.parse(String(text||"").replace(/^\`\`\`json\s*|\`\`\`$/g,"").trim())}catch{return null}}
+function safeJson(text){
+ try{return JSON.parse(String(text||"").trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim())}catch{return null}
+}
 function elevenConfig(){
  const raw=process.env.ELEVENLABS_API_KEY;
  const key=typeof raw==="string"?raw.trim():"";
@@ -72,8 +75,8 @@ function elevenConfig(){
 const ELEVEN_AGENT_ID="agent_2001m47ydj9yfa098yn1savj7m5x";
 async function getElevenSignedUrl(){
  const e=elevenConfig();
- if(!e.configured){const x=new Error("ELEVENLABS_API_KEY is missing at runtime");x.code="ELEVEN_NOT_CONFIGURED";throw x}
- const r=await fetch("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="+encodeURIComponent(ELEVEN_AGENT_ID),{headers:{"xi-api-key":e.key}});
+ if(!e.configured) return "wss://api.elevenlabs.io/v1/convai/conversation?agent_id="+encodeURIComponent(ELEVEN_AGENT_ID);
+ const r=await fetch("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="+encodeURIComponent(ELEVEN_AGENT_ID),{headers:{"xi-api-key":e.key},signal:AbortSignal.timeout(10000)});
  const raw=await r.text();let d={};try{d=JSON.parse(raw)}catch{}
  if(!r.ok||!d.signed_url){const x=new Error(d?.detail?.message||d?.detail||("ElevenLabs HTTP "+r.status));x.code="ELEVEN_AUTH_ERROR";x.status=r.status;throw x}
  return d.signed_url;
@@ -82,32 +85,37 @@ async function callElevenAgent(message){
  const signed=await getElevenSignedUrl();
  return await new Promise((resolve,reject)=>{
   const ws=new WebSocket(signed);
-  let done=false;
+  let done=false,sent=false;
   const finish=(err,val)=>{if(done)return;done=true;clearTimeout(timer);try{ws.close()}catch{};err?reject(err):resolve(val)};
-  const timer=setTimeout(()=>finish(Object.assign(new Error("ElevenLabs timeout"),{code:"ELEVEN_TIMEOUT"})),60000);
+  const sendRequest=()=>{if(sent||done)return;sent=true;ws.send(JSON.stringify({type:"user_message",text:message}))};
+  const timer=setTimeout(()=>finish(Object.assign(new Error("ElevenLabs timeout"),{code:"ELEVEN_TIMEOUT"})),90000);
   ws.addEventListener("open",()=>{
    ws.send(JSON.stringify({type:"conversation_initiation_client_data",conversation_config_override:{conversation:{text_only:true}}}));
-   ws.send(JSON.stringify({type:"user_message",text:message}));
   });
   ws.addEventListener("message",(ev)=>{
    let d;try{d=JSON.parse(String(ev.data))}catch{return}
    if(d.type==="ping"&&d.ping_event) ws.send(JSON.stringify({type:"pong",event_id:d.ping_event.event_id}));
+   // The first agent response is the configured greeting, not an analysis.
    if(d.type==="agent_response"){
     const answer=d.agent_response_event?.agent_response;
-    if(answer) finish(null,answer);
+    if(!sent){sendRequest();return}
+    if(typeof answer==="string"&&answer.trim()) finish(null,answer);
    }
    if(d.type==="client_error") finish(Object.assign(new Error(d.client_error_event?.message||"ElevenLabs client error"),{code:"ELEVEN_UPSTREAM_ERROR"}));
   });
   ws.addEventListener("error",()=>finish(Object.assign(new Error("ElevenLabs WebSocket error"),{code:"ELEVEN_UPSTREAM_ERROR"})));
+  ws.addEventListener("close",(ev)=>{
+   if(!done) finish(Object.assign(new Error("ElevenLabs closed the connection ("+ev.code+"). "+(ev.reason||"")),{code:"ELEVEN_CONNECTION_CLOSED"}));
+  });
  });
 }
 app.get("/api/sources",(req,res)=>res.json({sources:SOURCES}));
 app.post("/api/analyze",async(req,res)=>{
  const {text,audience="جمهور عام",audienceDetails="",goal="تحليل الأسلوب واقتراح تحسين"}=req.body||{};
- if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});
+ if(typeof text!=="string"||!text.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});
  const words=text.trim().split(/\s+/).filter(Boolean).length;
  if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة).",code:"TEXT_TOO_LONG"});
- if(!elevenConfig().configured) return res.status(503).json({error:"مفتاح ElevenLabs غير مفعّل في خدمة API.",code:"ELEVEN_NOT_CONFIGURED"});
+ if([audience,audienceDetails,goal].some(x=>typeof x!=="string")) return res.status(400).json({error:"بيانات الجمهور والهدف غير صالحة.",code:"INVALID_INPUT"});
  const prompt=`حلّل النص التالي وفق قاعدة المعرفة/RAG المرتبطة بك. هذا طلب من واجهة وِصال.
 الجمهور المختار: ${audience}${audienceDetails?` — تفاصيل الجمهور: ${audienceDetails}`:""}
 الهدف المختار: ${goal}
@@ -121,14 +129,16 @@ ${text}
   const raw=await callElevenAgent(prompt);
   const result=safeJson(raw);
   if(!result) return res.status(502).json({error:"وصل رد من وكيل وِصال لكن تعذر قراءته كتحليل منظم.",code:"ELEVEN_BAD_RESPONSE",details:raw.slice(0,500)});
+  if(typeof result.impression!=="string"||typeof result.rewrite!=="string"||!Array.isArray(result.strengths)||!Array.isArray(result.improvements)||!result.strengths.every(x=>typeof x==="string")||!result.improvements.every(x=>typeof x==="string")) return res.status(502).json({error:"رد الوكيل لا يحتوي حقول التحليل المطلوبة.",code:"ELEVEN_BAD_RESPONSE"});
   res.json({...result,sources:[]});
  }catch(e){
   console.error("Eleven analyze error:",{code:e?.code||"ANALYZE_ERROR",status:e?.status||null,message:e?.message||"Unknown"});
   if(e?.code==="ELEVEN_TIMEOUT") return res.status(504).json({error:"انتهت مهلة استجابة وكيل وِصال.",code:e.code});
-  if(e?.code==="ELEVEN_NOT_CONFIGURED") return res.status(503).json({error:"مفتاح ElevenLabs غير مفعّل في خدمة API.",code:e.code});
   res.status(502).json({error:"تعذر الاتصال بوكيل وِصال.",code:e?.code||"ELEVEN_UPSTREAM_ERROR",details:e?.message});
  }
 });
-app.get("/api/health",(req,res)=>{const e=elevenConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},elevenlabs:{configured:e.configured,envPresent:e.envPresent,keyLength:e.keyLength,agentId:ELEVEN_AGENT_ID},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
+app.get("/api/health",(req,res)=>{const e=elevenConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},elevenlabs:{configured:e.configured,authMode:e.configured?"signed-url":"public-agent",envPresent:e.envPresent,keyLength:e.keyLength,agentId:ELEVEN_AGENT_ID},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
+app.use("/api",(req,res)=>res.status(404).json({error:"مسار API غير موجود.",code:"NOT_FOUND"}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 app.listen(process.env.PORT||3000,()=>{const e=elevenConfig();console.log("Wisal AI running",{service:"wisal-ai-api",elevenConfigured:e.configured,elevenEnvPresent:e.envPresent,elevenKeyLength:e.keyLength,agentId:ELEVEN_AGENT_ID,sources:SOURCES.length})});
+
