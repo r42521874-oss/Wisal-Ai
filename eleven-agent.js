@@ -38,7 +38,10 @@ export async function callElevenAgent(message){
   });
   ws.addEventListener("error",()=>finish(Object.assign(new Error("ElevenLabs WebSocket error"),{code:"ELEVEN_UPSTREAM_ERROR"})));
   ws.addEventListener("close",(ev)=>{
-   if(!done) finish(Object.assign(new Error("ElevenLabs closed the connection ("+ev.code+"). "+(ev.reason||"")),{code:"ELEVEN_CONNECTION_CLOSED"}));
+   if(!done){
+    console.error("ElevenLabs connection closed", {closeCode:ev.code,reason:String(ev.reason||"").replace(/(?:sk_|xi-)[A-Za-z0-9_-]+/g,"[redacted]").slice(0,300),requestSent:sent});
+    finish(Object.assign(new Error("ElevenLabs closed the connection ("+ev.code+"). "+(ev.reason||"")),{code:"ELEVEN_CONNECTION_CLOSED"}));
+   }
   });
  });
 }
