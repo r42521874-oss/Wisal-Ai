@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const app=express();
+app.disable("x-powered-by");
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 app.use(express.json({limit:"1mb"}));
 const ALLOWED_ORIGINS=(process.env.ALLOWED_ORIGINS||"https://wisal-ai.onrender.com,https://wisal-ai-api.onrender.com").split(",").map(x=>x.trim()).filter(Boolean);
@@ -49,8 +50,8 @@ function stripHtml(raw){return raw.replace(/<script[\s\S]*?<\/script>/gi," ").re
 async function fetchSourceContext(source){
  try{
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),6000);
-  const r=await fetch(source.url,{headers:{"User-Agent":"WisalAI/1.0","Accept":"text/html,application/json,text/plain"},signal:controller.signal});
+  const timeout=setTimeout(()=>controller.abort(),8000);
+  const r=await fetch(source.url,{headers:{"User-Agent":"WisalAI/1.0","Accept":"text/html,application/json,text/plain"},signal:controller.signal,redirect:"follow"});
   clearTimeout(timeout);
   if(!r.ok) return null;
   const type=r.headers.get("content-type")||"";
@@ -60,16 +61,32 @@ async function fetchSourceContext(source){
   const excerpt=raw.replace(/\s+/g," ").trim().slice(0,5000);
   if(excerpt.length<40) return null;
   return {...source,excerpt};
- }catch{return null}
+ }catch(e){console.warn("Source unavailable:",source.id,e?.name||e?.message||"unknown");return null}
 }
-function safeJson(text){try{return JSON.parse(text.replace(/^```json\s*|```$/g,"").trim())}catch{return null}}
+function safeJson(text){try{return JSON.parse(String(text||"").replace(/^\`\`\`json\s*|\`\`\`$/g,"").trim())}catch{return null}}
+function geminiConfig(){
+ const key=(process.env.GEMINI_API_KEY||"").trim();
+ return {configured:key.length>0,keyLength:key.length,model:(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim()};
+}
+async function callGemini(prompt){
+ const {configured,model}=geminiConfig();
+ if(!configured){const e=new Error("GEMINI_API_KEY is missing at runtime");e.code="GEMINI_NOT_CONFIGURED";throw e}
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),45000);
+ try{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY.trim())}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.25}}),signal:controller.signal});
+  const raw=await r.text(); let data={}; try{data=JSON.parse(raw)}catch{}
+  if(!r.ok){const e=new Error(data?.error?.message||`Gemini HTTP ${r.status}`);e.code="GEMINI_UPSTREAM_ERROR";e.status=r.status;throw e}
+  return data;
+ }finally{clearTimeout(timeout)}
+}
 app.get("/api/sources",(req,res)=>res.json({sources:SOURCES}));
 app.post("/api/analyze",async(req,res)=>{
  const {text,audience="جمهور عام",audienceDetails="",goal="تحليل الأسلوب واقتراح تحسين"}=req.body||{};
  if(!text?.trim()) return res.status(400).json({error:"أدخل النص أولًا.",code:"EMPTY_TEXT"});
  const words=text.trim().split(/\s+/).filter(Boolean).length;
  if(words>1500) return res.status(413).json({error:"النص يتجاوز الحد المسموح (1500 كلمة). قسّميه إلى أجزاء أقصر.",code:"TEXT_TOO_LONG",maxWords:1500,words});
- if(!process.env.GEMINI_API_KEY) return res.status(503).json({error:"Gemini غير مفعّل بعد. أضيفي GEMINI_API_KEY في Render."});
+ if(!geminiConfig().configured) return res.status(503).json({error:"Gemini غير مفعّل في خدمة API وقت التشغيل.",code:"GEMINI_NOT_CONFIGURED"});
  const candidates=retrieve(text).slice(0,3);
  const fetched=(await Promise.all(candidates.map(fetchSourceContext))).filter(Boolean);
  const allowed=fetched;
@@ -87,18 +104,21 @@ ${allowed.map(s=>"- ID: "+s.id+" | "+s.name+" | "+s.url+"\nمقتطف متحقق
 source_ids يجب أن تكون فقط من المصادر المسترجعة التالية: ${allowed.map(s=>s.id).join(", ")||"لا يوجد"}.
 إذا لم تحتج إلى مصدر أو لم تستطع التحقق، اجعل source_ids فارغة واذكر ذلك في safety_note.`;
  try{
-  const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.25}})});
-  const data=await r.json();
-  if(!r.ok) return res.status(502).json({error:"تعذر الاتصال بـ Gemini.",details:data?.error?.message||"API error"});
+  const data=await callGemini(prompt);
   const raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||"";
   const result=safeJson(raw);
   if(!result) return res.status(502).json({error:"تعذر قراءة نتيجة التحليل."});
   const allowedIds=new Set(allowed.map(s=>s.id));
   const used=(Array.isArray(result.source_ids)?result.source_ids:[]).filter(id=>allowedIds.has(id)).map(id=>allowed.find(s=>s.id===id)).filter(Boolean).map(({excerpt,...s})=>s);
   res.json({...result,sources:used});
- }catch(e){console.error("Analyze error:",e);res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",details:e?.message||"Unknown server error"})}
+ }catch(e){
+  console.error("Analyze error:",{code:e?.code||"ANALYZE_ERROR",status:e?.status||null,message:e?.message||"Unknown"});
+  if(e?.code==="GEMINI_NOT_CONFIGURED") return res.status(503).json({error:"Gemini غير مفعّل في خدمة API وقت التشغيل.",code:e.code});
+  if(e?.name==="AbortError") return res.status(504).json({error:"انتهت مهلة الاتصال بـ Gemini.",code:"GEMINI_TIMEOUT"});
+  if(e?.code==="GEMINI_UPSTREAM_ERROR") return res.status(502).json({error:"رفض Gemini طلب التحليل.",code:e.code,details:e.message});
+  res.status(500).json({error:"حدث خطأ مؤقت أثناء التحليل.",code:"ANALYZE_ERROR"});
+ }
 });
-app.get("/api/health",(req,res)=>res.json({ok:true,geminiConfigured:Boolean(process.env.GEMINI_API_KEY),model:process.env.GEMINI_MODEL||"gemini-2.5-flash",sources:SOURCES.length,allowedOrigins:ALLOWED_ORIGINS}));
+app.get("/api/health",(req,res)=>{const g=geminiConfig();res.json({ok:true,gemini:{configured:g.configured,model:g.model},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
 app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 app.listen(process.env.PORT||3000,()=>console.log("Wisal AI running"));
