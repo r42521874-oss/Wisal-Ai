@@ -18,3 +18,7 @@ test('number changed',()=>assert.ok(outputChecks('لدينا 5 أفكار',{...v
 test('new religious claim',()=>assert.ok(outputChecks('عاملهم برحمة',{...valid,rewrite:'قال الله عاملهم برحمة'},[]).includes('NEW_RELIGIOUS_CLAIM')));
 test('unsupported source rejected',()=>assert.ok(outputChecks('نص',{...valid,source_ids:['invented']},PASSAGES).includes('UNSUPPORTED_SOURCE')));
 test('same quote and number allowed',()=>assert.deepEqual(outputChecks('لدينا 5 أفكار «الرفق جميل»',{...valid,rewrite:'«الرفق جميل»؛ لدينا 5 أفكار'},[]),[]));
+
+// A friendlier tone must not turn an existing obligation into an optional invitation.
+ test('obligation cannot become optional reflection',()=>{assert.ok(outputChecks('يجب على كل إنسان أن يعرف خالقه.',{rewrite:'دعوة لكل إنسان للتأمل في خالقه.',source_ids:[]},[]).includes('OBLIGATION_CHANGED'))});
+ test('analysis-only does not claim a removed quotation',()=>{assert.deepEqual(outputChecks('قال الله: «فقولا له قولا لينا» 44.',{rewrite:'',source_ids:[]},[]),[])});

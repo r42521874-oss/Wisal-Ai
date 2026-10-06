@@ -24,16 +24,17 @@ export function preflight(text){
  return {blocked:false,code:'STYLE_SCOPE',message:'تحسين أسلوب التواصل ضمن نطاق الأداة.',level:/اسلام|الله|دين|دعوه/.test(n)?2:1};
 }
 export function retrievePassages(text,audience){
- const n=normalize(text+' '+audience);
+ const n=normalize(text);
  return PASSAGES.map(p=>({p,score:p.keywords.reduce((a,k)=>a+(n.includes(normalize(k))?1:0),0)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,2).map(x=>x.p);
 }
 export function parseJSON(text){try{return JSON.parse(String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim())}catch{return null}}
 export function schemaValid(r){return !!r&&typeof r.impression==='string'&&r.impression.length>0&&typeof r.rewrite==='string'&&['strengths','improvements','changes','source_ids'].every(k=>Array.isArray(r[k])&&r[k].length<=15&&r[k].every(x=>typeof x==='string'&&x.length<=2000))&&r.impression.length<=6000&&r.rewrite.length<=20000;}
 export function outputChecks(text,result,passages){
  const issues=[];const out=result.rewrite||'';const input=normalize(text),n=normalize(out);
- for(const q of text.match(/[«“"]([^»”"]{5,})[»”"]/g)||[])if(!out.includes(q))issues.push('PROTECTED_QUOTE_CHANGED');
- for(const v of text.match(/[0-9٠-٩]+/g)||[])if(!out.includes(v))issues.push('NUMBER_CHANGED');
+ for(const q of (out?text:'').match(/[«“"]([^»”"]{5,})[»”"]/g)||[])if(!out.includes(q))issues.push('PROTECTED_QUOTE_CHANGED');
+ for(const v of (out?text:'').match(/[0-9٠-٩]+/g)||[])if(!out.includes(v))issues.push('NUMBER_CHANGED');
  if(/قال الله|قال رسول|قال النبي|حلال|حرام|واجب|فرض/.test(n)&&!(/قال الله|قال رسول|قال النبي|حلال|حرام|واجب|فرض/.test(input)))issues.push('NEW_RELIGIOUS_CLAIM');
+ if(out&&/يجب|واجب|فرض|يتعين|يلزم/.test(input)&&!(/يجب|واجب|فرض|يتعين|يلزم|عليه ان/.test(n)))issues.push('OBLIGATION_CHANGED');
  const allowed=new Set(passages.map(p=>p.id));
  if(result.source_ids.some(id=>!allowed.has(id)))issues.push('UNSUPPORTED_SOURCE');
  return [...new Set(issues)];
