@@ -20,13 +20,13 @@ app.get("/",(req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 app.get("/index.html",(req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 
 const SOURCES=[
- {id:"quranenc",name:"موسوعة القرآن الكريم",url:"https://quranenc.com/en/home/api",api:"https://quranenc.com/en/home/api",tags:["قرآن","ترجمة"]},
+ {id:"quranenc",name:"موسوعة القرآن الكريم",url:"https://quranenc.com/",api:"https://quranenc.com/en/home/api",tags:["قرآن","ترجمة"]},
  {id:"hadeethenc",name:"موسوعة الأحاديث النبوية",url:"https://hadeethenc.com/",api:"https://hadeethenc.com/",tags:["حديث","سنة"]},
  {id:"islamenc",name:"موسوعة المحتوى الإسلامي باللغات",url:"https://islamenc.com/ar",tags:["محتوى إسلامي","لغات"]},
  {id:"terminologyenc",name:"موسوعة المصطلحات الإسلامية",url:"https://terminologyenc.com/",tags:["مصطلحات"]},
- {id:"byenah",name:"بيان الإسلام",url:"https://byenah.com/ar/api",tags:["تعريف بالإسلام","لغات"]},
+ {id:"byenah",name:"موقع بيان الإسلام",url:"https://byenah.com/ar",tags:["تعريف بالإسلام","لغات"]},
  {id:"dorar",name:"الدرر السنية",url:"https://dorar.net/article/389",tags:["حديث","علوم شرعية"]},
- {id:"qurancomplex",name:"مجمع الملك فهد لطباعة المصحف الشريف",url:"https://qurancomplex.gov.sa/quran-dev/",tags:["قرآن","نص المصحف"]},
+ {id:"qurancomplex",name:"مجمع الملك فهد لطباعة المصحف الشريف",url:"https://qurancomplex.gov.sa/quran-dev",tags:["قرآن","نص المصحف"]},
  {id:"wahy",name:"مركز تفسير للدراسات القرآنية",url:"https://wahy.net/",tags:["تفسير","دراسات قرآنية"]},
  {id:"shamela",name:"المكتبة الشاملة",url:"https://shamela.ws/page/download",tags:["كتب","مراجع"]}
 ];
