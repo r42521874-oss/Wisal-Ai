@@ -129,6 +129,6 @@ ${text}
   res.status(502).json({error:"تعذر الاتصال بوكيل وِصال.",code:e?.code||"ELEVEN_UPSTREAM_ERROR",details:e?.message});
  }
 });
-app.get("/api/health",(req,res)=>{const g=geminiConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},gemini:{configured:g.configured,envPresent:g.envPresent,envNonEmpty:g.envNonEmpty,keyLength:g.keyLength,model:g.model},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
+app.get("/api/health",(req,res)=>{const e=elevenConfig();res.json({ok:true,service:"wisal-ai-api",runtime:{node:process.version},elevenlabs:{configured:e.configured,envPresent:e.envPresent,keyLength:e.keyLength,agentId:ELEVEN_AGENT_ID},sources:{configured:SOURCES.length,policy:"approved-only-no-alternatives"},allowedOrigins:ALLOWED_ORIGINS})});
 app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
-app.listen(process.env.PORT||3000,()=>{const g=geminiConfig();console.log("Wisal AI running",{service:"wisal-ai-api",geminiConfigured:g.configured,geminiEnvPresent:g.envPresent,geminiKeyLength:g.keyLength,geminiModel:g.model,sources:SOURCES.length})});
+app.listen(process.env.PORT||3000,()=>{const e=elevenConfig();console.log("Wisal AI running",{service:"wisal-ai-api",elevenConfigured:e.configured,elevenEnvPresent:e.envPresent,elevenKeyLength:e.keyLength,agentId:ELEVEN_AGENT_ID,sources:SOURCES.length})});
